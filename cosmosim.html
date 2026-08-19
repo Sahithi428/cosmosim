@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CosmoSim — Interactive Cosmic Fluid & Particle Simulator</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Outfit:wght@200;300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: #030008;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        h1, h2, h3, h4, h5, h6 {
+            font-family: 'Space Grotesk', sans-serif;
+        }
+
+        /* Glassmorphism custom styles */
+        .glass {
+            background: rgba(10, 5, 20, 0.45);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        .glass-btn {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .glass-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.2);
+            transform: translateY(-1px);
+        }
+
+        .glass-btn.active {
+            background: linear-gradient(135deg, rgba(147, 51, 234, 0.2) 0%, rgba(79, 70, 229, 0.2) 100%);
+            border-color: rgba(147, 51, 234, 0.4);
+            box-shadow: 0 0 15px rgba(147, 51, 234, 0.25);
+        }
+
+        /* Custom Scrollbar for configuration drawer */
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 99px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        /* Shimmer & Glow Effects */
+        .glow-text {
+            text-shadow: 0 0 10px rgba(168, 85, 247, 0.5), 0 0 20px rgba(99, 102, 241, 0.3);
+        }
+
+        .neon-border {
+            position: relative;
+        }
+        .neon-border::after {
+            content: '';
+            position: absolute;
+            inset: -1px;
+            background: linear-gradient(90deg, #a855f7, #6366f1, #3b82f6, #a855f7);
+            background-size: 400% 400%;
+            z-index: -1;
+            border-radius: inherit;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            animation: moveGradient 4s linear infinite;
+        }
+        .neon-border:hover::after {
+            opacity: 0.5;
+        }
+
+        @keyframes moveGradient {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* Tooltip style */
+        .tooltip {
+            visibility: hidden;
+            opacity: 0;
+            transition: opacity 0.2s, visibility 0.2s;
+        }
+        .has-tooltip:hover .tooltip {
+            visibility: visible;
+            opacity: 1;
+        }
+    </style>
+</head>
+<body class="relative min-h-screen text-slate-100 flex flex-col justify-between">
+    <!-- Background Canvas for full-screen physics engine -->
+    <canvas id="canvas" class="absolute inset-0 w-full h-full z-0 pointer-events-auto"></canvas>
+
+    <!-- Top Navigation Header (Glassmorphic) -->
+    <header class="w-full z-10 p-4 pointer-events-none">
+        <div class="max-w-7xl mx-auto flex justify-between items-center pointer-events-auto">
+            <div class="flex items-center gap-3 glass px-5 py-2.5 rounded-full">
+                <div class="w-3.5 h-3.5 rounded-full bg-purple-500 animate-pulse relative">
+                    <span class="absolute inset-0 rounded-full bg-purple-400 animate-ping opacity-75"></span>
+                </div>
+                <div class="flex flex-col">
+                    <span class="text-sm font-semibold tracking-wider text-purple-300">COSMOSIM</span>
+                    <span class="text-[10px] text-slate-400 font-mono tracking-widest uppercase">v1.2 // Live Engine</span>
+                </div>
+            </div>
+
+            <!-- Stats/Overlay info -->
+            <div class="flex items-center gap-4 glass px-5 py-2.5 rounded-full text-xs font-mono text-slate-300">
+                <div class="flex items-center gap-1.5 border-r border-slate-800 pr-3">
+                    <i data-lucide="cpu" class="w-3.5 h-3.5 text-indigo-400"></i>
+                    <span>FPS: <span id="fps-counter" class="text-indigo-300 font-bold">60</span></span>
+                </div>
+                <div class="flex items-center gap-1.5 border-r border-slate-800 pr-3">
+                    <i data-lucide="activity" class="w-3.5 h-3.5 text-emerald-400"></i>
+                    <span>Particles: <span id="particle-counter" class="text-emerald-300 font-bold">0</span></span>
+                </div>
+                <div class="flex items-center gap-1.5">
+                    <i data-lucide="magnet" class="w-3.5 h-3.5 text-pink-400"></i>
+                    <span>Gravity Wells: <span id="gravity-counter" class="text-pink-300 font-bold">0</span></span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content & Left Sidebar Controls -->
+    <main class="w-full max-w-7xl mx-auto px-4 flex-grow flex items-center justify-between z-10 pointer-events-none relative">
+        <!-- Interactive Control Panel (Glassmorphism) -->
+        <div id="control-panel" class="w-80 glass rounded-2xl p-5 flex flex-col gap-6 pointer-events-auto transition-all duration-300 transform translate-x-0 overflow-y-auto max-h-[80vh]">
+            
+            <!-- Logo & Description -->
+            <div class="flex flex-col gap-1.5 border-b border-slate-800/60 pb-4">
+                <h1 class="text-xl font-bold tracking-tight bg-gradient-to-r from-purple-400 via-indigo-400 to-blue-400 bg-clip-text text-transparent glow-text">
+                    Cosmological Fluid
+                </h1>
+                <p class="text-xs text-slate-400 leading-relaxed">
+                    Left-click to attract, Right-click to create gravity wells. Customize properties to create nebula gas, galaxies, or starbursts.
+                </p>
+            </div>
+
+            <!-- Quick presets section -->
+            <div class="flex flex-col gap-2">
+                <label class="text-[11px] font-bold text-slate-400 tracking-wider uppercase font-mono flex items-center gap-1.5">
+                    <i data-lucide="sparkles" class="w-3.5 h-3.5 text-purple-400"></i> Cosmic Presets
+                </label>
+                <div class="grid grid-cols-2 gap-2">
+                    <button id="preset-galaxy" class="glass-btn text-xs py-2 rounded-lg font-medium active">Milky Way</button>
+                    <button id="preset-blackhole" class="glass-btn text-xs py-2 rounded-lg font-medium">Singularity</button>
+                    <button id="preset-nebula" class="glass-btn text-xs py-2 rounded-lg font-medium">Cosmic Dust</button>
+                    <button id="preset-aurora" class="glass-btn text-xs py-2 rounded-lg font-medium">Solar Wind</button>
+                </div>
+            </div>
+
+            <!-- Theme / Color Palettes -->
+            <div class="flex flex-col gap-2.5">
+                <label class="text-[11px] font-bold text-slate-400 tracking-wider uppercase font-mono flex items-center gap-1.5">
+                    <i data-lucide="palette" class="w-3.5 h-3.5 text-indigo-400"></i> Visual Color Themes
+                </label>
+                <div class="flex flex-wrap gap-2">
+                    <button data-theme="nebula" class="w-7 h-7 rounded-full bg-gradient-to-tr from-purple-600 to-indigo-400 ring-2 ring-purple-500/50 hover:scale-110 transition-transform active-theme" title="Nebula"></button>
+                    <button data-theme="cyberpunk" class="w-7 h-7 rounded-full bg-gradient-to-tr from-pink-500 to-cyan-400 hover:scale-110 transition-transform" title="Cyberpunk"></button>
+                    <button data-theme="fire" class="w-7 h-7 rounded-full bg-gradient-to-tr from-red-600 to-yellow-400 hover:scale-110 transition-transform" title="Supernova"></button>
+                    <button data-theme="aurora" class="w-7 h-7 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-300 hover:scale-110 transition-transform" title="Aurora"></button>
+                    <button data-theme="mono" class="w-7 h-7 rounded-full bg-gradient-to-tr from-slate-200 to-slate-400 hover:scale-110 transition-transform" title="Spectral White"></button>
+                    <button data-theme="matrix" class="w-7 h-7 rounded-full bg-gradient-to-tr from-green-700 to-emerald-400 hover:scale-110 transition-transform" title="Grid Matrix"></button>
+                </div>
+            </div>
+
+            <!-- Visualization Style / Render Mode -->
+            <div class="flex flex-col gap-2">
+                <label class="text-[11px] font-bold text-slate-400 tracking-wider uppercase font-mono flex items-center gap-1.5">
+                    <i data-lucide="eye" class="w-3.5 h-3.5 text-emerald-400"></i> Render Mode
+                </label>
+                <div class="grid grid-cols-3 gap-1.5">
+                    <button id="render-dots" class="glass-btn text-[10px] py-1.5 rounded font-mono active">Particles</button>
+                    <button id="render-lines" class="glass-btn text-[10px] py-1.5 rounded font-mono">Web/Mesh</button>
+                    <button id="render-fluid" class="glass-btn text-[10px] py-1.5 rounded font-mono">Nebulous</button>
+                </div>
+            </div>
+
+            <!-- Physics sliders -->
+            <div class="flex flex-col gap-4 border-t border-slate-800/60 pt-4">
+                
+                <!-- Density/Count slider -->
+                <div class="flex flex-col gap-1.5">
+                    <div class="flex justify-between items-center text-xs text-slate-300">
+                        <span class="flex items-center gap-1"><i data-lucide="layers" class="w-3.5 h-3.5 text-blue-400"></i> Particle Count</span>
+                        <span id="val-particleCount" class="font-mono text-purple-300 font-semibold">1,500</span>
+                    </div>
+                    <input type="range" id="slider-particleCount" min="200" max="4000" step="50" value="1500" class="w-full accent-purple-500 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer">
+                </div>
+
+                <!-- Gravity Strength slider -->
+                <div class="flex flex-col gap-1.5">
+                    <div class="flex justify-between items-center text-xs text-slate-300">
+                        <span class="flex items-center gap-1"><i data-lucide="magnet" class="w-3.5 h-3.5 text-pink-400"></i> Gravity Pull</span>
+                        <span id="val-gravityStrength" class="font-mono text-purple-300 font-semibold">1.5</span>
+                    </div>
+                    <input type="range" id="slider-gravityStrength" min="-3" max="5" step="0.1" value="1.5" class="w-full accent-purple-500 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer">
+                </div>
+
+                <!-- Particle Life / Decay Slider -->
+                <div class="flex flex-col gap-1.5">
+                    <div class="flex justify-between items-center text-xs text-slate-300">
+                        <span class="flex items-center gap-1"><i data-lucide="hourglass" class="w-3.5 h-3.5 text-amber-400"></i> Motion Blur Trail</span>
+                        <span id="val-trailIntensity" class="font-mono text-purple-300 font-semibold">0.12</span>
+                    </div>
+                    <input type="range" id="slider-trailIntensity" min="0.01" max="0.5" step="0.01" value="0.12" class="w-full accent-purple-500 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer">
+                </div>
+
+                <!-- Particle Speed Slider -->
+                <div class="flex flex-col gap-1.5">
+                    <div class="flex justify-between items-center text-xs text-slate-300">
+                        <span class="flex items-center gap-1"><i data-lucide="wind" class="w-3.5 h-3.5 text-cyan-400"></i> Speed Coefficient</span>
+                        <span id="val-speedCoeff" class="font-mono text-purple-300 font-semibold">1.0</span>
+                    </div>
+                    <input type="range" id="slider-speedCoeff" min="0.1" max="4.0" step="0.1" value="1.0" class="w-full accent-purple-500 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer">
+                </div>
+
+                <!-- Friction / Viscosity Slider -->
+                <div class="flex flex-col gap-1.5">
+                    <div class="flex justify-between items-center text-xs text-slate-300">
+                        <span class="flex items-center gap-1"><i data-lucide="droplet" class="w-3.5 h-3.5 text-blue-400"></i> Cosmic Friction</span>
+                        <span id="val-friction" class="font-mono text-purple-300 font-semibold">0.98</span>
+                    </div>
+                    <input type="range" id="slider-friction" min="0.90" max="1.0" step="0.005" value="0.98" class="w-full accent-purple-500 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer">
+                </div>
+            </div>
+
+            <!-- Interaction Modes -->
+            <div class="flex flex-col gap-2">
+                <label class="text-[11px] font-bold text-slate-400 tracking-wider uppercase font-mono">Mouse Click Interaction</label>
+                <div class="grid grid-cols-2 gap-2">
+                    <button id="click-attract" class="glass-btn text-xs py-2 rounded-lg font-medium active flex items-center justify-center gap-1.5">
+                        <i data-lucide="magnet" class="w-3.5 h-3.5 text-indigo-400"></i> Attract
+                    </button>
+                    <button id="click-repel" class="glass-btn text-xs py-2 rounded-lg font-medium flex items-center justify-center gap-1.5">
+                        <i data-lucide="shield-alert" class="w-3.5 h-3.5 text-rose-400"></i> Repel
+                    </button>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/60">
+                <button id="btn-clear" class="glass-btn text-xs py-2.5 rounded-lg text-slate-300 flex items-center justify-center gap-1.5 hover:text-red-300">
+                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Clear Scene
+                </button>
+                <button id="btn-explode" class="glass-btn text-xs py-2.5 rounded-lg text-slate-300 flex items-center justify-center gap-1.5 hover:text-amber-300">
+                    <i data-lucide="zap" class="w-3.5 h-3.5"></i> Big Bang
+                </button>
+            </div>
+        </div>
+
+        <!-- Float Info box at right -->
+        <div class="absolute right-4 top-4 w-72 glass rounded-2xl p-4 flex flex-col gap-3 pointer-events-auto transition-all duration-300 transform translate-x-0">
+            <h3 class="text-xs font-bold tracking-wider font-mono text-purple-300 flex items-center gap-2">
+                <i data-lucide="info" class="w-4 h-4 text-purple-400"></i> SYSTEM HUD & INSTRUCTIONS
+            </h3>
+            <div class="text-[11px] text-slate-300 flex flex-col gap-2 font-mono">
+                <div class="flex items-start gap-1">
+                    <span class="text-indigo-400 font-bold">[Click]</span>
+                    <span>Generates powerful directional gravitational attract/repel fields.</span>
+                </div>
+                <div class="flex items-start gap-1">
+                    <span class="text-pink-400 font-bold">[Right-Click]</span>
+                    <span>Creates persistent orbits (Static Gravitational singularities).</span>
+                </div>
+                <div class="flex items-start gap-1">
+                    <span class="text-amber-400 font-bold">[Double-Click]</span>
+                    <span>Triggers custom explosive burst (Supernova event) at cursor.</span>
+                </div>
+                <div class="flex items-start gap-1">
+                    <span class="text-emerald-400 font-bold">[Spacebar]</span>
+                    <span>Toggle pause / play simulation instantly.</span>
+                </div>
+            </div>
+            <div class="border-t border-slate-800/60 pt-2.5 flex items-center justify-between text-[11px] text-slate-400">
+                <span>Ambient audio sync</span>
+                <button id="btn-audio" class="w-6 h-6 rounded-md glass-btn flex items-center justify-center text-slate-400 hover:text-purple-300" title="Click to enable music/mic reactive visuals">
+                    <i data-lucide="mic-off" class="w-3.5 h-3.5"></i>
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <!-- Bottom Instructions Footer -->
+    <footer class="w-full z-10 p-4 pointer-events-none text-center">
+        <span class="glass px-4 py-1.5 rounded-full text-[10px] text-slate-400 font-mono tracking-widest uppercase pointer-events-auto">
+            Design & Physics Engine meticulously crafted using modern CSS3 Canvas & HTML5 Web Audio API
+        </span>
+    </footer>
+
+    <!-- Core Physics & Rendering Application Logic -->
+    <script>
+        // Initialization & DOM elements
+        lucide.createIcons();
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const fpsCounter = document.getElementById('fps-counter');
+        const particleCounter = document.getElementById('particle-counter');
+        const gravityCounter = document.getElementById('gravity-counter');
+
+        // Control Panel Dom elements
+        const sliderParticleCount = document.getElementById('slider-particleCount');
+        const valParticleCount = document.getElementById('val-particleCount');
+        const sliderGravityStrength = document.getElementById('slider-gravityStrength');
+        const valGravityStrength = document.getElementById('val-gravityStrength');
+        const sliderTrailIntensity = document.getElementById('slider-trailIntensity');
+        const valTrailIntensity = document.getElementById('val-trailIntensity');
+        const sliderSpeedCoeff = document.getElementById('slider-speedCoeff');
+        const valSpeedCoeff = document.getElementById('val-speedCoeff');
+        const sliderFriction = document.getElementById('slider-friction');
+        const valFriction = document.getElementById('val-friction');
+
+        const btnClear = document.getElementById('btn-clear');
+        const btnExplode = document.getElementById('btn-explode');
+        const clickAttract = document.getElementById('click-attract');
+        const clickRepel = document.getElementById('click-repel');
+        const renderDots = document.getElementById('render-dots');
+        const renderLines = document.getElementById('render-lines');
+        const renderFluid = document.getElementById('render-fluid');
+        const btnAudio = document.getElementById('btn-audio');
+
+        // Presets
+        const presetGalaxy = document.getElementById('preset-galaxy');
+        const presetBlackhole = document.getElementById('preset-blackhole');
+        const presetNebula = document.getElementById('preset-nebula');
+        const presetAurora = document.getElementById('preset-aurora');
+
+        // State variables
+        let isPaused = false;
+        let particles = [];
+        let gravityWells = [];
+        let mouse = { x: null, y: null, active: false, clickMode: 'attract' }; // 'attract' or 'repel'
+        let lastTime = 0;
+        let fps = 60;
+        let frameCount = 0;
+        let fpsInterval = 0;
+        
+        // Simulation Parameters
+        let maxParticles = parseInt(sliderParticleCount.value);
+        let gravityStrength = parseFloat(sliderGravityStrength.value);
+        let trailAlpha = parseFloat(sliderTrailIntensity.value);
+        let speedCoefficient = parseFloat(sliderSpeedCoeff.value);
+        let friction = parseFloat(sliderFriction.value);
+        let renderMode = 'dots'; // 'dots', 'lines', 'fluid'
+        let activeTheme = 'nebula';
+
+        // Audio responsive variables
+        let audioEnabled = false;
+        let audioCtx, analyser, dataArray, source;
+        let bassBoost = 1.0;
+
+        // Visual Color Themes Definition
+        const themes = {
+            nebula: {
+                colors: ['#a855f7', '#6366f1', '#3b82f6', '#ec4899', '#c084fc'],
+                background: '#04000c'
+            },
+            cyberpunk: {
+                colors: ['#ff007f', '#00f0ff', '#ffec00', '#ab00ff', '#00ff66'],
+                background: '#00000a'
+            },
+            fire: {
+                colors: ['#ef4444', '#f97316', '#f59e0b', '#dc2626', '#ffe135'],
+                background: '#060000'
+            },
+            aurora: {
+                colors: ['#10b981', '#06b6d4', '#14b8a6', '#a7f3d0', '#6366f1'],
+                background: '#000406'
+            },
+            mono: {
+                colors: ['#f8fafc', '#cbd5e1', '#64748b', '#ffffff', '#e2e8f0'],
+                background: '#050505'
+            },
+            matrix: {
+                colors: ['#22c55e', '#4ade80', '#15803d', '#86efac', '#166534'],
+                background: '#000401'
+            }
+        };
+
+        // Resize Canvas to Window Viewport
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            // Redraw background immediately to prevent flash
+            ctx.fillStyle = themes[activeTheme].background;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Particle Class definition for beautiful animations
+        class Particle {
+            constructor(x, y, vx, vy) {
+                this.x = x || Math.random() * canvas.width;
+                this.y = y || Math.random() * canvas.height;
+                this.vx = vx || (Math.random() - 0.5) * 2;
+                this.vy = vy || (Math.random() - 0.5) * 2;
+                this.radius = Math.random() * 2 + 0.6;
+                this.baseRadius = this.radius;
+                
+                // Color selection based on theme
+                const idx = Math.floor(Math.random() * themes[activeTheme].colors.length);
+                this.color = themes[activeTheme].colors[idx];
+                this.life = Math.random() * 0.4 + 0.6; // value between 0.6 and 1.0
+                this.decay = Math.random() * 0.002 + 0.001;
+            }
+
+            update() {
+                // Apply drag/friction
+                this.vx *= friction;
+                this.vy *= friction;
+
+                // Speed limitations
+                const currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+                const maxSpeed = 15 * speedCoefficient;
+                if (currentSpeed > maxSpeed) {
+                    this.vx = (this.vx / currentSpeed) * maxSpeed;
+                    this.vy = (this.vy / currentSpeed) * maxSpeed;
+                }
+
+                // Add movement
+                this.x += this.vx * speedCoefficient;
+                this.y += this.vy * speedCoefficient;
+
+                // Boundary reflections / wrapping
+                if (this.x < 0) {
+                    this.x = 0;
+                    this.vx *= -0.8;
+                } else if (this.x > canvas.width) {
+                    this.x = canvas.width;
+                    this.vx *= -0.8;
+                }
+
+                if (this.y < 0) {
+                    this.y = 0;
+                    this.vy *= -0.8;
+                } else if (this.y > canvas.height) {
+                    this.y = canvas.height;
+                    this.vy *= -0.8;
+                }
+
+                // Aging
+                this.life -= this.decay;
+                if (this.life <= 0) {
+                    this.reset();
+                }
+            }
+
+            reset() {
+                // Respawn particle at boundary or random position
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.vx = (Math.random() - 0.5) * 1.5;
+                this.vy = (Math.random() - 0.5) * 1.5;
+                this.life = Math.random() * 0.4 + 0.6;
+                this.radius = Math.random() * 2 + 0.6;
+                this.baseRadius = this.radius;
+                const idx = Math.floor(Math.random() * themes[activeTheme].colors.length);
+                this.color = themes[activeTheme].colors[idx];
+            }
+
+            draw() {
+                ctx.beginPath();
+                // If audio responsiveness is enabled, scale particle size with frequencies
+                let r = this.radius;
+                if (audioEnabled && dataArray) {
+                    // map particle color indices to audio indexes
+                    const byteIdx = Math.floor((this.x / canvas.width) * (dataArray.length / 2));
+                    const volume = dataArray[byteIdx] / 255;
+                    r = this.baseRadius * (1 + volume * 2.5 * bassBoost);
+                }
+                
+                ctx.arc(this.x, this.y, r, 0, Math.PI * 2);
+                
+                // Opacity matches the remaining life of the particle
+                ctx.fillStyle = this.color;
+                ctx.globalAlpha = this.life;
+                ctx.fill();
+                ctx.globalAlpha = 1.0; // Reset
+            }
+        }
+
+        // Gravity Well (Singularity) structure
+        class GravityWell {
+            constructor(x, y, strength = 2) {
+                this.x = x;
+                this.y = y;
+                this.strength = strength;
+                this.radius = Math.max(8, Math.abs(strength) * 6);
+                this.pulse = 0;
+            }
+
+            draw() {
+                this.pulse += 0.05;
+                const dynamicRadius = this.radius + Math.sin(this.pulse) * 3;
+                
+                // Create gorgeous gradient ring
+                const grad = ctx.createRadialGradient(this.x, this.y, 2, this.x, this.y, dynamicRadius * 2);
+                if (this.strength > 0) {
+                    grad.addColorStop(0, 'rgba(168, 85, 247, 0.8)'); // Purple singularity center
+                    grad.addColorStop(0.3, 'rgba(99, 102, 241, 0.4)');
+                    grad.addColorStop(1, 'rgba(0,0,0,0)');
+                } else {
+                    grad.addColorStop(0, 'rgba(239, 68, 68, 0.8)'); // Red repeller
+                    grad.addColorStop(0.3, 'rgba(249, 115, 22, 0.4)');
+                    grad.addColorStop(1, 'rgba(0,0,0,0)');
+                }
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, dynamicRadius * 2, 0, Math.PI * 2);
+                ctx.fillStyle = grad;
+                ctx.fill();
+
+                // Core singularity dot
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 2, 0, Math.PI * 2);
+                ctx.fillStyle = '#ffffff';
+                ctx.shadowColor = this.strength > 0 ? '#c084fc' : '#f87171';
+                ctx.shadowBlur = 8;
+                ctx.fill();
+                ctx.shadowBlur = 0; // Reset glow
+            }
+        }
+
+        // Create particles
+        function initParticles(count) {
+            particles = [];
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle());
+            }
+            particleCounter.innerText = particles.length;
+        }
+        initParticles(maxParticles);
+
+        // Physics solver for attractions
+        function applyPhysics() {
+            // Mouse gravity attraction/repulsion
+            if (mouse.active && mouse.x !== null && mouse.y !== null) {
+                const multiplier = mouse.clickMode === 'attract' ? 1.2 : -1.5;
+                const effectiveStrength = gravityStrength * multiplier;
+                
+                particles.forEach(p => {
+                    const dx = mouse.x - p.x;
+                    const dy = mouse.y - p.y;
+                    const distSq = dx * dx + dy * dy;
+                    const dist = Math.sqrt(distSq);
+
+                    if (dist < 400 && dist > 2) {
+                        // Classical Newton's law representation
+                        const force = (effectiveStrength * 200) / (distSq + 1200);
+                        p.vx += (dx / dist) * force;
+                        p.vy += (dy / dist) * force;
+                    }
+                });
+            }
+
+            // Static Gravity Wells physics calculations
+            gravityWells.forEach(well => {
+                particles.forEach(p => {
+                    const dx = well.x - p.x;
+                    const dy = well.y - p.y;
+                    const distSq = dx * dx + dy * dy;
+                    const dist = Math.sqrt(distSq);
+
+                    if (dist > 5) {
+                        const force = (well.strength * 450) / (distSq + 2500);
+                        p.vx += (dx / dist) * force;
+                        p.vy += (dy / dist) * force;
+                    } else if (dist <= 5 && well.strength > 0) {
+                        // Singular collapse: respawn particle as if swallowed and ejected from the edges
+                        p.reset();
+                    }
+                });
+            });
+        }
+
+        // Beautiful Render Line Connections
+        function drawMeshConnections() {
+            ctx.lineWidth = 0.55;
+            const colors = themes[activeTheme].colors;
+            const maxConnectionDist = 45;
+
+            // Highly optimized grid or index checking to prevent O(N^2) lag
+            // Check subsets or sample connections to preserve performance at high particle counts
+            const sampleFactor = particles.length > 1500 ? 5 : (particles.length > 800 ? 3 : 1);
+
+            for (let i = 0; i < particles.length; i += sampleFactor) {
+                const p1 = particles[i];
+                for (let j = i + 1; j < particles.length; j += sampleFactor * 2) {
+                    const p2 = particles[j];
+                    const dx = p1.x - p2.x;
+                    const dy = p1.y - p2.y;
+                    const distSq = dx * dx + dy * dy;
+
+                    if (distSq < maxConnectionDist * maxConnectionDist) {
+                        const dist = Math.sqrt(distSq);
+                        const alpha = (1 - (dist / maxConnectionDist)) * 0.28 * Math.min(p1.life, p2.life);
+                        
+                        ctx.strokeStyle = p1.color;
+                        ctx.globalAlpha = alpha;
+                        ctx.beginPath();
+                        ctx.moveTo(p1.x, p1.y);
+                        ctx.lineTo(p2.x, p2.y);
+                        ctx.stroke();
+                    }
+                }
+            }
+            ctx.globalAlpha = 1.0; // reset
+        }
+
+        // Draw background overlay for Nebulous/Fluid blend modes
+        function renderNebulousFluid() {
+            // Uses a softer trails drawing and screen blending to make everything look highly gaseous
+            ctx.fillStyle = `rgba(0, 0, 0, ${trailAlpha})`;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Render particles as large glowing fuzzy balls
+            particles.forEach(p => {
+                ctx.beginPath();
+                const size = p.radius * (12 * p.life);
+                const radialGrad = ctx.createRadialGradient(p.x, p.y, 1, p.x, p.y, size);
+                radialGrad.addColorStop(0, p.color);
+                radialGrad.addColorStop(0.3, p.color);
+                radialGrad.addColorStop(1, 'rgba(0,0,0,0)');
+                
+                ctx.fillStyle = radialGrad;
+                ctx.globalAlpha = p.life * 0.15;
+                ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.globalAlpha = 1.0;
+        }
+
+        // Big Bang Blast (Supernova Explosion Event)
+        function triggerSupernova(x, y, particleIntensity = 300) {
+            const centerX = x || canvas.width / 2;
+            const centerY = y || canvas.height / 2;
+            
+            // Push current particles outwards violently or inject temporary explosive sparkles
+            particles.forEach(p => {
+                const dx = p.x - centerX;
+                const dy = p.y - centerY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < 350) {
+                    const force = (350 - dist) / 10;
+                    p.vx += (dx / (dist || 1)) * force * speedCoefficient * 1.5;
+                    p.vy += (dy / (dist || 1)) * force * speedCoefficient * 1.5;
+                    p.life = Math.min(1.0, p.life + 0.3); // Energize particles
+                }
+            });
+
+            // Make visual flash effect
+            ctx.fillStyle = '#ffffff';
+            ctx.globalAlpha = 0.35;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.globalAlpha = 1.0;
+        }
+
+        // Game Loop / Render Engine
+        function tick(timestamp) {
+            if (!lastTime) lastTime = timestamp;
+            const elapsed = timestamp - lastTime;
+            lastTime = timestamp;
+
+            // FPS Calculation
+            frameCount++;
+            fpsInterval += elapsed;
+            if (fpsInterval >= 1000) {
+                fps = frameCount;
+                fpsCounter.innerText = fps;
+                frameCount = 0;
+                fpsInterval = 0;
+            }
+
+            if (!isPaused) {
+                applyPhysics();
+                
+                // Clear scene with motion-blur or hard refresh
+                if (renderMode === 'fluid') {
+                    renderNebulousFluid();
+                } else {
+                    // Normal canvas clear using transparent background to make smooth trailing orbits
+                    ctx.fillStyle = themes[activeTheme].background;
+                    ctx.globalAlpha = trailAlpha;
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.globalAlpha = 1.0; // reset
+                }
+
+                // Render Gravity Wells
+                gravityWells.forEach(well => well.draw());
+
+                // Update and render particles
+                particles.forEach(p => {
+                    p.update();
+                    p.draw();
+                });
+
+                // Mesh render connection lines
+                if (renderMode === 'lines') {
+                    drawMeshConnections();
+                }
+            }
+
+            requestAnimationFrame(tick);
+        }
+
+        // Interactive Event Listeners (Mouse / Keyboard / Controls)
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.button === 0) { // Left Click
+                mouse.active = true;
+                updateMousePos(e);
+            } else if (e.button === 2) { // Right Click
+                e.preventDefault();
+                // Spawn persistent gravity well
+                const wellStrength = gravityStrength !== 0 ? gravityStrength : 1.5;
+                gravityWells.push(new GravityWell(e.clientX, e.clientY, wellStrength));
+                gravityCounter.innerText = gravityWells.length;
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            updateMousePos(e);
+        });
+
+        canvas.addEventListener('mouseup', (e) => {
+            if (e.button === 0) {
+                mouse.active = false;
+            }
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            mouse.active = false;
+        });
+
+        canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault(); // Disable traditional right-click menu
+        });
+
+        canvas.addEventListener('dblclick', (e) => {
+            triggerSupernova(e.clientX, e.clientY);
+        });
+
+        function updateMousePos(e) {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        }
+
+        // Pause on Spacebar
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                isPaused = !isPaused;
+            }
+        });
+
+        // Sliders updates
+        sliderParticleCount.addEventListener('input', (e) => {
+            maxParticles = parseInt(e.target.value);
+            valParticleCount.innerText = maxParticles.toLocaleString();
+            initParticles(maxParticles);
+        });
+
+        sliderGravityStrength.addEventListener('input', (e) => {
+            gravityStrength = parseFloat(e.target.value);
+            valGravityStrength.innerText = gravityStrength;
+        });
+
+        sliderTrailIntensity.addEventListener('input', (e) => {
+            trailAlpha = parseFloat(e.target.value);
+            valTrailIntensity.innerText = trailAlpha;
+        });
+
+        sliderSpeedCoeff.addEventListener('input', (e) => {
+            speedCoefficient = parseFloat(e.target.value);
+            valSpeedCoeff.innerText = speedCoefficient;
+        });
+
+        sliderFriction.addEventListener('input', (e) => {
+            friction = parseFloat(e.target.value);
+            valFriction.innerText = friction;
+        });
+
+        // Click modes triggers
+        clickAttract.addEventListener('click', () => {
+            mouse.clickMode = 'attract';
+            clickAttract.classList.add('active');
+            clickRepel.classList.remove('active');
+        });
+
+        clickRepel.addEventListener('click', () => {
+            mouse.clickMode = 'repel';
+            clickRepel.classList.add('active');
+            clickAttract.classList.remove('active');
+        });
+
+        // Render mode selectors
+        renderDots.addEventListener('click', () => {
+            renderMode = 'dots';
+            renderDots.classList.add('active');
+            renderLines.classList.remove('active');
+            renderFluid.classList.remove('active');
+        });
+
+        renderLines.addEventListener('click', () => {
+            renderMode = 'lines';
+            renderLines.classList.add('active');
+            renderDots.classList.remove('active');
+            renderFluid.classList.remove('active');
+        });
+
+        renderFluid.addEventListener('click', () => {
+            renderMode = 'fluid';
+            renderFluid.classList.add('active');
+            renderDots.classList.remove('active');
+            renderLines.classList.remove('active');
+        });
+
+        // Color Theme selectors
+        document.querySelectorAll('[data-theme]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                // remove existing theme active rings
+                document.querySelectorAll('[data-theme]').forEach(b => b.classList.remove('ring-2', 'ring-purple-500/50'));
+                
+                // Add ring to selected
+                const themeName = e.target.getAttribute('data-theme');
+                activeTheme = themeName;
+                e.target.classList.add('ring-2', 'ring-purple-500/50');
+                
+                // Recolor active particles on theme change
+                particles.forEach(p => {
+                    const idx = Math.floor(Math.random() * themes[activeTheme].colors.length);
+                    p.color = themes[activeTheme].colors[idx];
+                });
+
+                // Canvas bg refresh
+                ctx.fillStyle = themes[activeTheme].background;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            });
+        });
+
+        // Clear Scene
+        btnClear.addEventListener('click', () => {
+            gravityWells = [];
+            gravityCounter.innerText = '0';
+            initParticles(maxParticles);
+        });
+
+        // Explode / Big bang
+        btnExplode.addEventListener('click', () => {
+            triggerSupernova(null, null);
+        });
+
+        // Preset Settings Loader
+        function loadPreset(presetName) {
+            // Reset active button styling
+            [presetGalaxy, presetBlackhole, presetNebula, presetAurora].forEach(btn => btn.classList.remove('active'));
+
+            if (presetName === 'galaxy') {
+                presetGalaxy.classList.add('active');
+                
+                // Set values
+                sliderParticleCount.value = 2500;
+                sliderGravityStrength.value = 1.8;
+                sliderTrailIntensity.value = 0.08;
+                sliderSpeedCoeff.value = 1.2;
+                sliderFriction.value = 0.99;
+                
+                // Load matrix themes
+                document.querySelector('[data-theme="nebula"]').click();
+                renderLines.click();
+
+                // Generate central gravity well simulating massive galactic core
+                gravityWells = [new GravityWell(canvas.width / 2, canvas.height / 2, 2.5)];
+                gravityCounter.innerText = gravityWells.length;
+            } else if (presetName === 'blackhole') {
+                presetBlackhole.classList.add('active');
+                
+                sliderParticleCount.value = 1800;
+                sliderGravityStrength.value = 4.0;
+                sliderTrailIntensity.value = 0.15;
+                sliderSpeedCoeff.value = 0.8;
+                sliderFriction.value = 0.97;
+                
+                document.querySelector('[data-theme="cyberpunk"]').click();
+                renderDots.click();
+
+                gravityWells = [new GravityWell(canvas.width / 2, canvas.height / 2, 5.0)];
+                gravityCounter.innerText = gravityWells.length;
+            } else if (presetName === 'nebula') {
+                presetNebula.classList.add('active');
+                
+                sliderParticleCount.value = 1200;
+                sliderGravityStrength.value = 0.6;
+                sliderTrailIntensity.value = 0.04;
+                sliderSpeedCoeff.value = 0.7;
+                sliderFriction.value = 0.94;
+                
+                document.querySelector('[data-theme="fire"]').click();
+                renderFluid.click();
+
+                gravityWells = [];
+                gravityCounter.innerText = '0';
+            } else if (presetName === 'aurora') {
+                presetAurora.classList.add('active');
+                
+                sliderParticleCount.value = 2200;
+                sliderGravityStrength.value = -1.2; // Repelling force standard
+                sliderTrailIntensity.value = 0.07;
+                sliderSpeedCoeff.value = 1.4;
+                sliderFriction.value = 0.97;
+                
+                document.querySelector('[data-theme="aurora"]').click();
+                renderDots.click();
+
+                gravityWells = [
+                    new GravityWell(canvas.width * 0.25, canvas.height / 2, -1.5),
+                    new GravityWell(canvas.width * 0.75, canvas.height / 2, -1.5)
+                ];
+                gravityCounter.innerText = gravityWells.length;
+            }
+
+            // Sync slide inputs values to engine
+            maxParticles = parseInt(sliderParticleCount.value);
+            valParticleCount.innerText = maxParticles.toLocaleString();
+            gravityStrength = parseFloat(sliderGravityStrength.value);
+            valGravityStrength.innerText = gravityStrength;
+            trailAlpha = parseFloat(sliderTrailIntensity.value);
+            valTrailIntensity.innerText = trailAlpha;
+            speedCoefficient = parseFloat(sliderSpeedCoeff.value);
+            valSpeedCoeff.innerText = speedCoefficient;
+            friction = parseFloat(sliderFriction.value);
+            valFriction.innerText = friction;
+
+            initParticles(maxParticles);
+        }
+
+        presetGalaxy.addEventListener('click', () => loadPreset('galaxy'));
+        presetBlackhole.addEventListener('click', () => loadPreset('blackhole'));
+        presetNebula.addEventListener('click', () => loadPreset('nebula'));
+        presetAurora.addEventListener('click', () => loadPreset('aurora'));
+
+        // Audio responsive system setup (Microphone / System audio analysis API)
+        btnAudio.addEventListener('click', async () => {
+            if (audioEnabled) {
+                // Disable
+                audioEnabled = false;
+                btnAudio.innerHTML = '<i data-lucide="mic-off" class="w-3.5 h-3.5"></i>';
+                btnAudio.classList.remove('active');
+                lucide.createIcons();
+                return;
+            }
+
+            try {
+                // Request mic audio
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioCtx.createAnalyser();
+                analyser.fftSize = 256;
+                source = audioCtx.createMediaStreamSource(stream);
+                source.connect(analyser);
+                
+                const bufferLength = analyser.frequencyBinCount;
+                dataArray = new Uint8Array(bufferLength);
+                
+                audioEnabled = true;
+                btnAudio.innerHTML = '<i data-lucide="mic" class="w-3.5 h-3.5"></i>';
+                btnAudio.classList.add('active');
+                lucide.createIcons();
+
+                // Periodically analyze audio frequency spectrum inside the animation tick
+                function analyzeAudio() {
+                    if (!audioEnabled) return;
+                    analyser.getByteFrequencyData(dataArray);
+                    
+                    // calculate bass/volume average to boost speed and explosive responses
+                    let sum = 0;
+                    for (let i = 0; i < 10; i++) { // look at first few indices for low/bass
+                        sum += dataArray[i];
+                    }
+                    const avgBass = sum / 10;
+                    bassBoost = 1.0 + (avgBass / 128); // max around 3.0 boost
+
+                    // If bass is extremely heavy, trigger a slight flash or push forces
+                    if (avgBass > 220) {
+                        triggerSupernova(null, null, 100);
+                    }
+                    
+                    requestAnimationFrame(analyzeAudio);
+                }
+                analyzeAudio();
+
+            } catch (err) {
+                console.error("Audio initialization blocked or not supported:", err);
+                alert("Could not access audio device/mic. Enable microphone permissions to activate beat reactive visuals!");
+            }
+        });
+
+        // Run default preset galaxy on start
+        setTimeout(() => {
+            loadPreset('galaxy');
+        }, 300);
+
+        // Start engine tick loop
+        requestAnimationFrame(tick);
+    </script>
+</body>
+</html>
