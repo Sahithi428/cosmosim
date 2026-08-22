@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cybernetic Visual Synth</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body {
+      background: #050508;
+      color: #00f3ff;
+      font-family: 'Courier New', Courier, monospace;
+      overflow: hidden;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    canvas { display: block; flex: 1; width: 100%; }
+    .hud {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background: rgba(5, 5, 8, 0.85);
+      border: 1px solid #00f3ff;
+      box-shadow: 0 0 15px rgba(0, 243, 255, 0.2);
+      padding: 16px;
+      border-radius: 4px;
+      pointer-events: auto;
+    }
+    h1 { font-size: 1.1rem; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px; text-shadow: 0 0 8px #00f3ff; }
+    p { font-size: 0.75rem; color: #8a99ad; margin-bottom: 12px; }
+    .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.75rem; }
+    select, button {
+      background: #0d131a;
+      border: 1px solid #00f3ff;
+      color: #00f3ff;
+      padding: 6px;
+      font-family: inherit;
+      cursor: pointer;
+    }
+    button:hover, select:hover { background: #00f3ff; color: #050508; }
+    .keyboard {
+      height: 120px;
+      background: #090d14;
+      border-top: 2px solid #00f3ff;
+      display: flex;
+      justify-content: center;
+      padding: 10px;
+      gap: 4px;
+    }
+    .key {
+      flex: 1;
+      max-width: 45px;
+      background: #121924;
+      border: 1px solid #00f3ff;
+      border-radius: 0 0 4px 4px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      padding-bottom: 8px;
+      font-size: 0.7rem;
+      color: #00f3ff;
+      cursor: pointer;
+      transition: background 0.05s, transform 0.05s;
+    }
+    .key.active { background: #00f3ff; color: #050508; transform: translateY(4px); box-shadow: 0 0 12px #00f3ff; }
+    .key.black { background: #050508; border-color: #ff0055; color: #ff0055; max-width: 30px; height: 60%; }
+    .key.black.active { background: #ff0055; color: #050508; box-shadow: 0 0 12px #ff0055; }
+  </style>
+</head>
+<body>
+
+  <canvas id="stage"></canvas>
+
+  <div class="hud">
+    <h1>CyberSynth // Visualizer</h1>
+    <p>Play with Keyboard (A-K, W-O) or Click Keys</p>
+    <div class="controls">
+      <select id="wave">
+        <option value="sine">Sine Wave</option>
+        <option value="sawtooth" selected>Sawtooth</option>
+        <option value="square">Square Wave</option>
+        <option value="triangle">Triangle</option>
+      </select>
+      <button id="startAudio">Enable Audio Engine</button>
+    </div>
+  </div>
+
+  <div class="keyboard" id="keyboard"></div>
+
+  <script>
+    const canvas = document.getElementById('stage');
+    const ctx = canvas.getContext('2d');
+    let width, height;
+
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight - 120;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // Audio Context Setup
+    let audioCtx = null;
+    let analyser = null;
+    let dataArray = new Uint8Array(0);
+
+    function initAudio() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 128;
+        analyser.connect(audioCtx.destination);
+        dataArray = new Uint8Array(analyser.frequencyBinCount);
+        document.getElementById('startAudio').textContent = "Audio Active";
+      }
+    }
+
+    document.getElementById('startAudio').addEventListener('click', initAudio);
+
+    // Key Mapping & Frequencies
+    const notes = [
+      { key: 'a', note: 'C4', freq: 261.63, isBlack: false },
+      { key: 'w', note: 'C#4', freq: 277.18, isBlack: true },
+      { key: 's', note: 'D4', freq: 293.66, isBlack: false },
+      { key: 'e', note: 'D#4', freq: 311.13, isBlack: true },
+      { key: 'd', note: 'E4', freq: 329.63, isBlack: false },
+      { key: 'f', note: 'F4', freq: 349.23, isBlack: false },
+      { key: 't', note: 'F#4', freq: 369.99, isBlack: true },
+      { key: 'g', note: 'G4', freq: 392.00, isBlack: false },
+      { key: 'y', note: 'G#4', freq: 415.30, isBlack: true },
+      { key: 'h', note: 'A4', freq: 440.00, isBlack: false },
+      { key: 'u', note: 'A#4', freq: 466.16, isBlack: true },
+      { key: 'j', note: 'B4', freq: 493.88, isBlack: false },
+      { key: 'k', note: 'C5', freq: 523.25, isBlack: false }
+    ];
+
+    const activeNodes = {};
+    const kbContainer = document.getElementById('keyboard');
+
+    // Render Keyboard Keys
+    notes.forEach(n => {
+      const keyEl = document.createElement('div');
+      keyEl.className = `key ${n.isBlack ? 'black' : ''}`;
+      keyEl.dataset.key = n.key;
+      keyEl.innerHTML = `<span>${n.key.toUpperCase()}</span>`;
+      
+      keyEl.addEventListener('mousedown', () => playNote(n));
+      keyEl.addEventListener('mouseup', () => stopNote(n));
+      keyEl.addEventListener('mouseleave', () => stopNote(n));
+      kbContainer.appendChild(keyEl);
+    });
+
+    function playNote(n) {
+      initAudio();
+      if (activeNodes[n.key]) return;
+
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      
+      osc.type = document.getElementById('wave').value;
+      osc.frequency.setValueAtTime(n.freq, audioCtx.currentTime);
+      
+      gain.gain.setValueAtTime(0.01, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.3, audioCtx.currentTime + 0.05);
+
+      osc.connect(gain);
+      gain.connect(analyser);
+      
+      osc.start();
+      activeNodes[n.key] = { osc, gain };
+
+      const el = document.querySelector(`[data-key="${n.key}"]`);
+      if (el) el.classList.add('active');
+    }
+
+    function stopNote(n) {
+      if (activeNodes[n.key]) {
+        const { osc, gain } = activeNodes[n.key];
+        gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.1);
+        setTimeout(() => {
+          osc.stop();
+          osc.disconnect();
+        }, 100);
+        delete activeNodes[n.key];
+
+        const el = document.querySelector(`[data-key="${n.key}"]`);
+        if (el) el.classList.remove('active');
+      }
+    }
+
+    // Physical Keyboard Bindings
+    window.addEventListener('keydown', (e) => {
+      if (e.repeat) return;
+      const n = notes.find(item => item.key === e.key.toLowerCase());
+      if (n) playNote(n);
+    });
+
+    window.addEventListener('keyup', (e) => {
+      const n = notes.find(item => item.key === e.key.toLowerCase());
+      if (n) stopNote(n);
+    });
+
+    // Graphics Visualization Loop
+    let rotation = 0;
+    function render() {
+      ctx.fillStyle = 'rgba(5, 5, 8, 0.2)';
+      ctx.fillRect(0, 0, width, height);
+
+      if (analyser) {
+        analyser.getByteFrequencyData(dataArray);
+      }
+
+      const centerX = width / 2;
+      const centerY = height / 2;
+      rotation += 0.005;
+
+      // Draw Perspective Grid
+      ctx.strokeStyle = 'rgba(0, 243, 255, 0.15)';
+      ctx.lineWidth = 1;
+      for (let i = -width; i < width * 2; i += 40) {
+        ctx.beginPath();
+        ctx.moveTo(i, height);
+        ctx.lineTo(centerX + (i - centerX) * 0.1, centerY);
+        ctx.stroke();
+      }
+
+      // Dynamic Wireframe Tunnel reacting to Audio
+      const numRings = 16;
+      for (let i = 0; i < numRings; i++) {
+        const val = dataArray[i % dataArray.length] || 0;
+        const radius = (i * 25 + (val * 0.5)) % (height * 0.6);
+        const alpha = 1 - (radius)
+
+        ctx.strokeStyle = `rgba(0, 243, 255, ${alpha})`;
+        ctx.beginPath();
