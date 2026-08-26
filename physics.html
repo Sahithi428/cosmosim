@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Interactive Physics & Particle Canvas</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+    body {
+      background: #0f172a;
+      color: #f8fafc;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    .ui-panel {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      background: rgba(30, 41, 59, 0.85);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 16px;
+      width: 280px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+    }
+    h2 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: #38bdf8;
+    }
+    .control-group {
+      margin-bottom: 12px;
+    }
+    label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.85rem;
+      margin-bottom: 4px;
+      color: #94a3b8;
+    }
+    input[type="range"] {
+      width: 100%;
+      accent-color: #38bdf8;
+      cursor: pointer;
+    }
+    .btn-group {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+    }
+    button {
+      flex: 1;
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover {
+      background: #2563eb;
+    }
+    button.secondary {
+      background: #475569;
+    }
+    button.secondary:hover {
+      background: #334155;
+    }
+    .stats {
+      margin-top: 12px;
+      font-size: 0.75rem;
+      color: #64748b;
+    }
+  </style>
+</head>
+<body>
+
+  <canvas id="canvas"></canvas>
+
+  <div class="ui-panel">
+    <h2>Particle Sandbox</h2>
+    
+    <div class="control-group">
+      <label>Gravity <span id="gravityVal">0.2</span></label>
+      <input type="range" id="gravity" min="-0.5" max="1" step="0.05" value="0.2">
+    </div>
+
+    <div class="control-group">
+      <label>Friction (Air) <span id="frictionVal">0.99</span></label>
+      <input type="range" id="friction" min="0.90" max="1.0" step="0.01" value="0.99">
+    </div>
+
+    <div class="control-group">
+      <label>Bounce Restitution <span id="bounceVal">0.7</span></label>
+      <input type="range" id="bounce" min="0.1" max="1.0" step="0.05" value="0.7">
+    </div>
+
+    <div class="btn-group">
+      <button id="burstBtn">Burst 100</button>
+      <button id="clearBtn" class="secondary">Clear</button>
+    </div>
+
+    <div class="stats">
+      Click & drag to spawn. <br>
+      Hold <kbd>Shift</kbd> + Click to place Attractor. <br>
+      Active Particles: <span id="count">0</span>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    let width, height;
+    function resize() {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // Configuration state
+    const config = {
+      gravity: 0.2,
+      friction: 0.99,
+      bounce: 0.7
+    };
+
+    // UI Bindings
+    document.getElementById('gravity').addEventListener('input', (e) => {
+      config.gravity = parseFloat(e.target.value);
+      document.getElementById('gravityVal').textContent = config.gravity;
+    });
+    document.getElementById('friction').addEventListener('input', (e) => {
+      config.friction = parseFloat(e.target.value);
+      document.getElementById('frictionVal').textContent = config.friction;
+    });
+    document.getElementById('bounce').addEventListener('input', (e) => {
+      config.bounce = parseFloat(e.target.value);
+      document.getElementById('bounceVal').textContent = config.bounce;
+    });
+
+    const particles = [];
+    const attractors = [];
+
+    class Particle {
+      constructor(x, y, vx, vy) {
+        this.x = x;
+        this.y = y;
+        this.vx = vx || (Math.random() - 0.5) * 8;
+        this.vy = vy || (Math.random() - 0.5) * 8;
+        this.radius = Math.random() * 4 + 2;
+        this.hue = Math.random() * 60 + 180; // Cyan-blue hue range
+        this.alpha = 1;
+      }
+
+      update() {
+        this.vy += config.gravity;
+        this.vx *= config.friction;
+        this.vy *= config.friction;
+
+        // Attractor physics
+        attractors.forEach(attractor => {
+          const dx = attractor.x - this.x;
+          const dy = attractor.y - this.y;
+          const distSq = dx * dx + dy * dy;
+          if (distSq > 100 && distSq < 250000) {
+            const force = 100 / distSq;
+            this.vx += dx * force;
+            this.vy += dy * force;
+          }
+        });
+
+        this.x += this.vx;
+        this.y += this.vy;
+
+        // Wall collisions
+        if (this.x - this.radius < 0) {
+          this.x = this.radius;
+          this.vx *= -config.bounce;
+        } else if (this.x + this.radius > width) {
+          this.x = width - this.radius;
+          this.vx *= -config.bounce;
+        }
+
+        if (this.y - this.radius < 0) {
+          this.y = this.radius;
+          this.vy *= -config.bounce;
+        } else if (this.y + this.radius > height) {
+          this.y = height - this.radius;
+          this.vy *= -config.bounce;
+        }
+      }
+
+      draw() {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fillStyle = `hsla(${this.hue}, 100%, 60%, ${this.alpha})`;
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = `hsl(${this.hue}, 100%, 50%)`;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+    }
+
+    class Attractor {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.pulse = 0;
+      }
+
+      draw() {
+        this.pulse += 0.05;
+        const r = 8 + Math.sin(this.pulse) * 2;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, r, 0, Math.PI * 2);
+        ctx.fillStyle = '#f43f5e';
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = '#f43f5e';
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+    }
+
+    function spawnBurst(x, y, count = 50) {
+      for (let i = 0; i < count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = Math.random() * 12 + 2;
+        particles.push(new Particle(
+          x, 
+          y, 
+          Math.cos(angle) * speed, 
+          Math.sin(angle) * speed
+        ));
+      }
+    }
+
+    // Interactivity
+    let isMouseDown = false;
+    window.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.ui-panel')) return;
+      
+      if (e.shiftKey) {
+        attractors.push(new Attractor(e.clientX, e.clientY));
+      } else {
+        isMouseDown = true;
+        spawnBurst(e.clientX, e.clientY, 15);
+      }
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (isMouseDown) {
+        particles.push(new Particle(e.clientX, e.clientY));
+      }
+    });
+
+    window.addEventListener('mouseup', () => isMouseDown = false);
+
+    document.getElementById('burstBtn').addEventListener('click', () => {
+      spawnBurst(width / 2, height / 3, 100);
+    });
+
+    document.getElementById('clearBtn').addEventListener('click', () => {
+      particles.length = 0;
+      attractors.length = 0;
+    });
+
+    // Animation Loop
+    function animate() {
+      // Create trailing visual effect
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.25)';
+      ctx.fillRect(0, 0, width, height);
+
+      attractors.forEach(a => a.draw());
+
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.update();
+        p.draw();
+      }
+
+      document.getElementById('count').textContent = particles.length;
+      requestAnimationFrame(animate);
+    }
+
+    animate();
+  </script>
+</body>
+</html>
