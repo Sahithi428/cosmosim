@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Real-Time Packet Monitor</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        body { font-family: monospace; background: #121212; color: #00ff66; padding: 20px; }
+        h1 { color: #fff; }
+        .alert { color: #ff3333; font-weight: bold; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #333; padding: 8px; text-align: left; }
+        th { background: #1e1e1e; color: #fff; }
+        tr:nth-child(even) { background: #181818; }
+    </style>
+</head>
+<body>
+    <h1>Network Sniffer & Intrusion Detector</h1>
+    <div id="status">Status: Connecting...</div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Time</th>
+                <th>Source IP</th>
+                <th>Destination IP</th>
+                <th>Protocol</th>
+                <th>Dest Port</th>
+                <th>Security Flag</th>
+            </tr>
+        </thead>
+        <tbody id="packet-table"></tbody>
+    </table>
+
+    <script>
+        const socket = io();
+        const tableBody = document.getElementById('packet-table');
+        const statusDiv = document.getElementById('status');
+
+        socket.on('connect', () => {
+            statusDiv.innerText = "Status: Live Snagging Packets...";
+            statusDiv.style.color = "#00ff66";
+        });
+
+        socket.on('new_packet', (data) => {
+            const row = document.createElement('tr');
+            if (data.alert) row.classList.add('alert');
+
+            row.innerHTML = `
+                <td>${data.timestamp}</td>
+                <td>${data.src_ip}</td>
+                <td>${data.dest_ip}</td>
+                <td>${data.protocol}</td>
+                <td>${data.dest_port}</td>
+                <td>${data.alert ? 'POSSIBLE PORT SCANNER' : 'NORMAL'}</td>
+            `;
+
+            tableBody.insertBefore(row, tableBody.firstChild);
+
+            // Keep max 20 rows visible
+            if (tableBody.children.length > 20) {
+                tableBody.removeChild(tableBody.lastChild);
+            }
+        });
+    </script>
+</body>
+</html>
