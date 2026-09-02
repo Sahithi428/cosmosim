@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rust WASM Image Processing</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background-color: #121212;
+      color: #fff;
+      margin: 0;
+    }
+    canvas {
+      border: 2px solid #333;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+    }
+    button {
+      padding: 0.75rem 1.5rem;
+      font-size: 1rem;
+      font-weight: bold;
+      color: #fff;
+      background-color: #6366f1;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    button:hover {
+      background-color: #4f46e5;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Rust + WebAssembly Grayscale Filter</h1>
+  <canvas id="canvas" width="400" height="400"></canvas>
+  <button id="btn">Apply Grayscale (WASM)</button>
+
+  <script type="module">
+    import init, { convert_to_grayscale } from './pkg/wasm_image_proc.js';
+
+    async function run() {
+      // Initialize the WASM binary memory
+      await init();
+
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+
+      // Generate a colorful radial pattern on canvas
+      for (let x = 0; x < 400; x++) {
+        for (let y = 0; y < 400; y++) {
+          const r = Math.floor((x / 400) * 255);
+          const g = Math.floor((y / 400) * 255);
+          const b = 150;
+          ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+          ctx.fillRect(x, y, 1, 1);
+        }
+      }
+
+      // Add click handler to pass image buffer to WASM
+      document.getElementById('btn').addEventListener('click', () => {
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        
+        // Mutates array buffer in-place using Rust memory
+        convert_to_grayscale(imageData.data);
+
+        // Render modified pixels back to screen
+        ctx.putImageData(imageData, 0, 0);
+      });
+    }
+
+    run();
+  </script>
+</body>
+</html>
